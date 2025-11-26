@@ -4,8 +4,6 @@
 
 A specialized **Single Page Application (SPA)** designed for researchers, PhD candidates, and academics aiming for top-tier SSCI publications. This tool acts as a personal Chief Editor, providing academic polishing, high-entropy AI text humanization, and simulated peer review—all running locally in your browser for maximum privacy.
 
-[**🔗 Launch Live App**](https://jiayouzhu0606.github.io/AI-Writing-Assistant/)
-
 ---
 
 ## ✨ Key Features
