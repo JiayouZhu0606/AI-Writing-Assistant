@@ -73,5 +73,7 @@
 ## 🤝 贡献与反馈
 
 如果您在使用过程中遇到问题，或者有新的功能建议，欢迎提交 [Issue](https://github.com/JiayouZhu0606/AI-Writing-Assistant/issues) 或 Pull Request。
+
 Welcome to any suggestions and criticism!
+
 **Author**: Jiayou Zhu
