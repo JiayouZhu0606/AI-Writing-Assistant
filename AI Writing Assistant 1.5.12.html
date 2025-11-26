@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Writing Assistant 1.5.12</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Mammoth.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        serif: ['"Times New Roman"', 'SimSun', 'serif'],
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'Fira Code', 'monospace'],
+                    },
+                    colors: {
+                        // Classic Color Scheme
+                        polish: { DEFAULT: '#2CA02C', light: '#98df8a', dark: '#217d21' }, // Green
+                        humanize: { DEFAULT: '#1F77B4', light: '#aec7e8', dark: '#155ba0' }, // Blue
+                        reviewer: { DEFAULT: '#FF7F0E', light: '#ffbb78', dark: '#d66606' }, // Orange
+                    },
+                    animation: {
+                        'scan-line': 'scan-line 2s linear infinite',
+                        'pulse-soft': 'pulse 3s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        'scan-line': {
+                            '0%': { top: '0%', opacity: '0' },
+                            '10%': { opacity: '1' },
+                            '90%': { opacity: '1' },
+                            '100%': { top: '100%', opacity: '0' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Base Transitions */
+        body { transition: background-color 0.3s, color 0.3s; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+
+        /* --- SSCI Output Typography --- */
+        .ssci-content {
+            font-family: "Times New Roman", SimSun, serif;
+            line-height: 1.8; 
+            font-size: 1.05rem;
+            overflow-wrap: break-word; 
+            word-wrap: break-word;
+            max-width: 100%;
+        }
+
+        /* Table Overflow Fix */
+        .ssci-content table {
+            display: block;
+            width: 100%;
+            overflow-x: auto;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            font-family: "Inter", sans-serif;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            white-space: normal;
+        }
+
+        .ssci-content th, .ssci-content td {
+            border: 1px solid #e2e8f0;
+            padding: 0.85rem;
+            text-align: left;
+            vertical-align: top;
+            min-width: 120px;
+        }
+
+        .dark .ssci-content table { border-color: #334155; }
+        .dark .ssci-content th, .dark .ssci-content td { border-color: #334155; }
+        .ssci-content th { background-color: #f8fafc; font-weight: 700; color: #334155; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+        .dark .ssci-content th { background-color: #1e293b; color: #f3f4f6; }
+
+        /* --- DYNAMIC HIGHLIGHTING SYSTEM --- */
+        .ssci-content strong {
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .mode-polish strong { background-color: #eaf7ea; color: #217d21; border: 1px solid #98df8a; }
+        .dark .mode-polish strong { background-color: rgba(44, 160, 44, 0.2); color: #74c476; border-bottom: 2px solid #2CA02C; border-top: none; border-left: none; border-right: none; border-radius: 0; }
+
+        .mode-paraphrase strong { background-color: #e1eff9; color: #155ba0; border: 1px solid #aec7e8; }
+        .dark .mode-paraphrase strong { background-color: rgba(31, 119, 180, 0.2); color: #6baed6; border-bottom: 2px solid #1F77B4; border-top: none; border-left: none; border-right: none; border-radius: 0; }
+
+        .mode-reviewer strong { background-color: #fff2e0; color: #d66606; border: 1px solid #ffbb78; }
+        .dark .mode-reviewer strong { background-color: rgba(255, 127, 14, 0.2); color: #fd8d3c; border-bottom: 2px solid #FF7F0E; border-top: none; border-left: none; border-right: none; border-radius: 0; }
+
+        textarea::placeholder { color: #94a3b8; font-family: 'Inter', sans-serif; font-style: italic; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans h-screen flex flex-col overflow-hidden dark:bg-gray-950 dark:text-gray-100">
+
+    <div id="app" class="flex flex-col h-full">
+
+        <!-- Header -->
+        <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 flex-none z-30 shadow-sm transition-colors">
+            <div class="h-full px-6 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div :class="['w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg transition-all duration-500 ease-out transform hover:scale-105', modeColorClasses[currentMode].bg]">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+                            <path d="M11.7 2.805a.75.75 0 0 1 .6 0A60.65 60.65 0 0 1 22.83 8.72a.75.75 0 0 1-.231 1.337 49.949 49.949 0 0 0-9.902 3.912l-.003.002-.34.18a.75.75 0 0 1-.707 0A50.009 50.009 0 0 0 7.5 12.174v-.224c0-.131.067-.248.182-.311a51.411 51.411 0 0 1 2.301-1.244.75.75 0 0 1 .638 1.352 49.916 49.916 0 0 0-1.621.879v.251c0 .245.195.449.438.487 1.488.232 3.238.468 4.562.597 1.57.153 3.033.313 4.136.468.243.034.464-.135.464-.379v-.341a50.84 50.84 0 0 1 3.518-1.554C19.345 10.384 15.655 8.97 12 7.822c-3.655 1.148-7.345 2.562-9.869 3.287-.582.167-1.074-.325-.976-.924a59.456 59.456 0 0 1 10.545-7.38Z" />
+                            <path fill-rule="evenodd" d="M2.25 12c0-.623.109-1.216.309-1.772.35.101.714.201 1.092.298a51.644 51.644 0 0 0 8.35 1.76V19.5c0 1.25-1.4 2.25-3 2.25s-3-1-3-2.25V12Zm11.25 7.5v-7.239a51.637 51.637 0 0 0 8.35-1.76c.378-.097.742-.197 1.091-.298.2.556.309 1.149.309 1.772v7.275c0 1.25-1.401 2.25-3.001 2.25S17.001 20.75 13.5 19.5ZM3 6.75A.75.75 0 0 1 3.75 6h.75a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-.75a.75.75 0 0 1-.75-.75V6.75Z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold tracking-tight text-gray-900 dark:text-white">AI Writing Assistant <span class="text-xs font-medium text-gray-500 ml-1">v1.5.12</span></h1>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button @click="toggleTheme" class="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400">
+                        <span v-if="isDark" class="flex items-center gap-2 text-sm font-medium">☀&#xFE0F; Light</span>
+                        <span v-else class="flex items-center gap-2 text-sm font-medium">🌙 Dark</span>
+                    </button>
+                    <button @click="toggleSidebar" class="md:hidden p-2 text-gray-600 dark:text-gray-400">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <div class="flex-1 flex overflow-hidden">
+            
+            <!-- Sidebar (Settings) -->
+            <aside :class="['bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col w-80 transition-all duration-300 absolute md:relative z-20 h-full shadow-2xl md:shadow-none', sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0']">
+                <div class="p-6 flex-1 overflow-y-auto">
+                    
+                    <!-- Section: Mode -->
+                    <div class="mb-8">
+                        <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Work Mode</h2>
+                        <div class="space-y-3 relative">
+                            <!-- Overlay when loading -->
+                            <div v-if="isLoading" class="absolute inset-0 bg-white/60 dark:bg-black/60 z-10 cursor-not-allowed rounded-xl flex items-center justify-center backdrop-blur-[1px]">
+                                <span class="text-xs font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-full shadow-sm text-gray-500">Locked</span>
+                            </div>
+
+                            <button @click="setMode('polish')" :disabled="isLoading" :class="['w-full flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all duration-200', currentMode === 'polish' ? 'border-polish bg-polish-light/20 dark:bg-polish/20 ring-1 ring-polish text-polish dark:text-polish-light shadow-sm' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800', isLoading ? 'opacity-50' : '']">
+                                <span class="text-2xl">🖊️</span>
+                                <div>
+                                    <div class="font-bold text-sm">Polishing</div>
+                                    <div class="text-xs opacity-70">Architecture & Tone</div>
+                                </div>
+                            </button>
+
+                            <button @click="setMode('paraphrase')" :disabled="isLoading" :class="['w-full flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all duration-200', currentMode === 'paraphrase' ? 'border-humanize bg-humanize-light/20 dark:bg-humanize/20 ring-1 ring-humanize text-humanize dark:text-humanize-light shadow-sm' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800', isLoading ? 'opacity-50' : '']">
+                                <span class="text-2xl">🌱</span>
+                                <div>
+                                    <div class="font-bold text-sm">Humanize AI</div>
+                                    <div class="text-xs opacity-70">Reduce & Detection</div>
+                                </div>
+                            </button>
+
+                            <button @click="setMode('reviewer')" :disabled="isLoading" :class="['w-full flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all duration-200', currentMode === 'reviewer' ? 'border-reviewer bg-reviewer-light/20 dark:bg-reviewer/20 ring-1 ring-reviewer text-reviewer dark:text-reviewer-light shadow-sm' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800', isLoading ? 'opacity-50' : '']">
+                                <span class="text-2xl">🕵️</span>
+                                <div>
+                                    <div class="font-bold text-sm">Peer Review</div>
+                                    <div class="text-xs opacity-70">Critique & Reply</div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Section: API Settings -->
+                    <div>
+                        <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">API Setup</h2>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Provider</label>
+                                <select v-model="selectedProvider" @change="updateProviderSettings" :disabled="isLoading" class="w-full text-sm p-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 outline-none transition-shadow disabled:opacity-50" :class="modeColorClasses[currentMode].ring">
+                                    <option value="moonshot">Moonshot (Kimi)</option>
+                                    <option value="deepseek">DeepSeek (深度求索)</option>
+                                    <option value="zhipu">Zhipu AI (智谱清言)</option>
+                                    <option value="qwen">Aliyun (通义千问)</option>
+                                    <option value="custom">Custom (OpenAI Compatible)</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">API Key</label>
+                                <input type="password" v-model="apiKey" :disabled="isLoading" placeholder="sk-..." class="w-full text-sm p-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 outline-none font-mono transition-shadow disabled:opacity-50" :class="modeColorClasses[currentMode].ring">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Model Name</label>
+                                <input type="text" v-model="modelName" :disabled="isLoading" class="w-full text-sm p-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 font-mono disabled:opacity-50">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Workspace -->
+            <main class="flex-1 flex flex-col md:flex-row h-full relative bg-gray-50 dark:bg-black/20 overflow-hidden">
+                
+                <!-- Input Column -->
+                <div class="w-full md:w-1/2 flex flex-col h-full border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 transition-colors min-w-0">
+                    <div class="h-14 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center px-5 bg-white dark:bg-gray-900 flex-none">
+                        <h3 class="font-bold text-sm text-gray-700 dark:text-gray-200 flex items-center gap-2">
+                            <span class="text-lg opacity-80">📄</span> Original Manuscript
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <input type="file" id="fileInput" accept=".docx,.txt" @change="handleFileUpload" :disabled="isLoading" class="hidden">
+                            <label for="fileInput" :class="['cursor-pointer px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition flex items-center gap-1.5', isLoading ? 'opacity-50 cursor-not-allowed' : '']">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                Upload
+                            </label>
+                            <button @click="inputText = ''" :disabled="isLoading" :class="['px-3 py-1.5 text-xs font-medium text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition', isLoading ? 'opacity-50 cursor-not-allowed' : '']">Clear</button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex-1 relative bg-gray-50/30 dark:bg-black/20 overflow-hidden">
+                        <textarea v-model="inputText" :disabled="isLoading" :class="['w-full h-full p-8 resize-none outline-none bg-transparent text-gray-800 dark:text-gray-200 font-serif text-[1.05rem] leading-[1.8] placeholder-gray-400', isLoading ? 'cursor-not-allowed text-gray-500' : '']" placeholder="Paste your academic text here..."></textarea>
+                    </div>
+
+                    <div class="p-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex-none space-y-3">
+                        <div class="relative">
+                            <input type="text" v-model="customInstruction" :disabled="isLoading" 
+                                placeholder="Optional: Specific requirements (e.g., 'Word limit: 200', 'Keep references')..." 
+                                class="w-full text-sm p-3 pl-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-700 outline-none transition-shadow disabled:opacity-50 text-gray-700 dark:text-gray-300 placeholder-gray-400">
+                            <span class="absolute left-3 top-3 text-gray-400 opacity-70">⚙️</span>
+                        </div>
+
+                        <button @click="processText" :disabled="isLoading || !inputText.trim()" 
+                            :class="['w-full py-3.5 text-white font-bold rounded-xl shadow-lg transition-all duration-300 transform active:scale-[0.99] flex items-center justify-center gap-2.5 disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none', modeColorClasses[currentMode].btn]">
+                            <span class="tracking-wide">{{ isLoading ? 'Processing...' : 'Execute ' + modeDisplayNames[currentMode] }}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Output Column -->
+                <div class="w-full md:w-1/2 flex flex-col h-full bg-gray-50 dark:bg-gray-950 transition-colors min-w-0 relative">
+                    <div class="h-14 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center px-5 bg-white dark:bg-gray-900 flex-none">
+                        <h3 class="font-bold text-sm text-gray-700 dark:text-gray-200 flex items-center gap-2">
+                            <span class="text-lg opacity-80">✨</span> Results & Revision
+                        </h3>
+                        <button @click="copyOutput" :class="['text-xs font-medium flex items-center gap-1.5 hover:underline transition-colors px-2 py-1 rounded', modeColorClasses[currentMode].text]">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                            Copy Markdown
+                        </button>
+                    </div>
+                    
+                    <div class="flex-1 overflow-y-auto p-8 relative bg-white dark:bg-gray-900 scroll-smooth">
+                        
+                        <div v-if="!renderedOutput && !isLoading" class="h-full flex flex-col items-center justify-center text-gray-300 dark:text-gray-700 select-none">
+                            <div class="w-16 h-16 mb-4 rounded-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                                <svg class="w-8 h-8 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"></path></svg>
+                            </div>
+                            <p class="font-sans text-sm font-medium">Waiting for input...</p>
+                        </div>
+
+                        <!-- 
+                            MINIMALIST ACADEMIC ANIMATION (With Cancel)
+                        -->
+                        <div v-if="isLoading" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white dark:bg-gray-900 bg-opacity-98 dark:bg-opacity-98 backdrop-blur-sm">
+                            
+                            <!-- Minimalist Document Scan Animation -->
+                            <div class="relative w-20 h-24 mb-8 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
+                                <!-- Abstract Lines -->
+                                <div class="space-y-2 p-3">
+                                    <div class="h-1.5 w-3/4 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+                                    <div class="h-1.5 w-full bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+                                    <div class="h-1.5 w-5/6 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+                                    <div class="h-1.5 w-full bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+                                    <div class="h-1.5 w-2/3 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+                                </div>
+                                <!-- Laser Scan Line -->
+                                <div :class="['absolute left-0 w-full h-0.5 shadow-[0_0_8px] animate-scan-line', modeColorClasses[currentMode].bg, currentMode === 'polish' ? 'shadow-green-400' : (currentMode === 'paraphrase' ? 'shadow-blue-400' : 'shadow-orange-400')]"></div>
+                            </div>
+
+                            <div class="w-72 space-y-6 text-center">
+                                <div>
+                                    <p class="text-xs font-bold tracking-widest uppercase text-gray-500 dark:text-gray-400 font-mono mb-2">
+                                        {{ statusText }}
+                                    </p>
+                                    <p class="text-[10px] text-gray-400 font-mono animate-pulse-soft">
+                                        Processing manuscript logic...
+                                    </p>
+                                </div>
+
+                                <!-- Cancel Button -->
+                                <button @click="cancelRequest" class="px-6 py-2 text-xs font-medium text-red-500 border border-red-200 dark:border-red-900/30 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center justify-center gap-2 mx-auto group">
+                                    <svg class="w-3 h-3 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                    Stop Generating
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div v-if="renderedOutput && !isLoading" 
+                             :class="['ssci-content prose dark:prose-invert max-w-none', `mode-${currentMode}`]" 
+                             v-html="renderedOutput">
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed } = Vue;
+
+        createApp({
+            setup() {
+                // UI State
+                const isDark = ref(false);
+                const sidebarOpen = ref(false);
+                const isLoading = ref(false);
+                const statusText = ref('Initializing...');
+                const customInstruction = ref('');
+                
+                // Abort Controller
+                let abortController = null;
+                
+                // Data
+                const inputText = ref('');
+                const outputText = ref('');
+                
+                // Settings
+                const currentMode = ref('polish');
+                const selectedProvider = ref('moonshot');
+                const apiKey = ref('');
+                const modelName = ref('moonshot-v1-8k');
+                const apiEndpoint = ref('https://api.moonshot.cn/v1/chat/completions');
+
+                const modeDisplayNames = {
+                    polish: 'Polishing',
+                    paraphrase: 'Humanize AI',
+                    reviewer: 'Peer Review'
+                };
+
+                const modeColorClasses = {
+                    polish: { 
+                        bg: 'bg-polish', 
+                        btn: 'bg-polish hover:bg-polish-dark shadow-polish/20', 
+                        ring: 'focus:ring-polish', 
+                        text: 'text-polish dark:text-polish-light' 
+                    },
+                    paraphrase: { 
+                        bg: 'bg-humanize', 
+                        btn: 'bg-humanize hover:bg-humanize-dark shadow-humanize/20', 
+                        ring: 'focus:ring-humanize', 
+                        text: 'text-humanize dark:text-humanize-light' 
+                    },
+                    reviewer: { 
+                        bg: 'bg-reviewer', 
+                        btn: 'bg-reviewer hover:bg-reviewer-dark shadow-reviewer/20', 
+                        ring: 'focus:ring-reviewer', 
+                        text: 'text-reviewer dark:text-reviewer-light' 
+                    }
+                };
+
+                const statusMessages = {
+                    polish: ["Parsing syntactic structure...", "Optimizing academic tone...", "Refining vocabulary...", "Finalizing revision..."],
+                    paraphrase: ["Analyzing linguistic patterns...", "Applying heuristic masking...", "Evaluating entropy...", "Verifying academic integrity..."],
+                    reviewer: ["Simulating peer review...", "Detecting methodological gaps...", "Formulating critique...", "Drafting rebuttal..."]
+                };
+
+                // --- PROMPTS ---
+                const POLISH_PROMPT = `
+# Role Definition
+You are an **Elite Academic Writing Architect** with a PhD in Applied Linguistics and Psycholinguistics, and 15+ years as Chief Editor for flagship SSCI journals.
+
+# Your Mission
+Serve as my **personal manuscript surgeon**.
+1. **Polishing Mode**: Microsurgery—preserve original structure while eliminating sub-academic residue (vague agency, syntactic monotony).
+2. **Rewriting Mode**: Reconstructive surgery—deconstruct and rebuild sentences to inject advanced rhetorical patterns and argumentative tension.
+
+**Success Metric**: The revised manuscript must pass the **"Senior Professor Skim Test"**.
+
+# Core Principles
+1. **Eradicate "Student Writing"**: No "it is widely known," "plays a crucial role." No weak modals ("might" -> "suggests").
+2. **Engineer Sentence Sophistication**: Vary architecture (periodic, cumulative). Front-load thematic weight.
+3. **Inject Lexical Precision**: "look at" -> "scrutinize," "show" -> "corroborate."
+4. **Fortify Inter-Sentential Logic**: Use concessive/causal linkers. Create argumentative tension.
+5. **Obey Journal Micro-Conventions**: Strict tense usage (APA vs Non-APA).
+
+# Output Format Requirements (⚠️ STRICT ADHERENCE)
+
+## Part 1: Revision Analysis (Markdown Table)
+Columns: | Original Sentence | Highlighted Revision | Editor's Rationale (Why & How) |
+Rules:
+- Original Sentence: Copy verbatim.
+- Highlighted Revision: Bold **every changed word/phrase**.
+- Editor's Rationale: Cite specific principle.
+
+## Part 2: Final Polished Text
+- Present the fully integrated paragraph(s).
+- **All modifications** must be **wrapped in double asterisks** (e.g., **new text**).
+- Preserve original paragraph breaks but ensure flow.
+`;
+
+                const PARAPHRASE_PROMPT = `
+# Role Definition
+You are an **Elite Academic Text Humanization Specialist** and **Chief Editor** for top SSCI journals.
+
+# Objective
+Transform AI-generated text into **high-entropy, discipline-specific scholarly discourse** that evades detection NOT by lowering quality, but by **increasing rhetorical sophistication**.
+
+# Critical Constraint: Academic Integrity
+**ABSOLUTELY NO** colloquialisms, slang, contractions (don't/can't), or grammatical errors. The output must be indistinguishable from a senior professor's writing.
+
+# Phase 1: Diagnostic Assessment
+Identify "LLM Fingerprints": Lexical Repetition, Syntactic Monotony, Predictable Transitions.
+
+# Phase 2: Surgical Humanization
+Apply these specific perturbations to increase **Burstiness** and **Perplexity**:
+1.  **Syntactic Architectural Variance**: Mix short assertives with long, periodic sentences.
+2.  **Lexical Rarefaction**: Replace high-probability tokens with low-probability academic synonyms.
+3.  **Epistemic Hedging**: Use "It appears reasonable to posit," "Evidence suggests."
+4.  **Cohesion disruption**: Remove mechanical transitions.
+
+# Output Format Requirements (⚠️ Mandatory)
+
+## 📊 STYLOMETRIC ANALYSIS
+**Detection Probability:** [X]% (Simulated)
+**Identified LLM Markers:** [List]
+
+## 📝 ACADEMIC HUMANIZED TEXT
+[The revised text. **Bold** significant changes. Ensure it reads like a top-tier SSCI manuscript.]
+
+## ✅ VALIDATION METRICS
+**Reduction Achieved:** [Y]%
+**Techniques Applied:** [Checklist]
+`;
+
+                const REVIEWER_PROMPT = `
+# Role Definition
+You are an **Elite Peer Reviewer** with 20+ years of experience on boards of Tier-1 journals.
+
+# Your Mission
+Execute a **three-phase scholarly simulation**:
+1. **Forensic Critique**: Generate 3-5 major and 5-8 minor reviewer comments.
+2. **Solution Architecture**: Design peer-review-proof solutions.
+3. **Diplomatic Response Letter**: Craft the gold-standard rebuttal.
+
+# Output Format Requirements (⚠️ STRICT ADHERENCE)
+
+## 📋 SIMULATED PEER REVIEW REPORT
+**Journal Targeted:** [Name]
+**Verdict:** [Reject/Major/Minor]
+**Overall Summary:** [2-3 sentences]
+
+---
+
+### MAJOR CONCERNS (Reviewer 1)
+**MC1. [Title]**
+- **Critique:** [Voice of reviewer]
+- **Severity:** Fatal/Revisable
+- **Journal-Specific:** [Context]
+
+[...Repeat...]
+---
+## 🔧 ACTIONABLE SOLUTIONS MATRIX
+### For Major Concern MC1
+**Fast Fix (2 hours):** ...
+**Real Fix (2 weeks):** ...
+**Nuclear Option:** ...
+---
+## 📤 AUTHOR RESPONSE LETTER TEMPLATE
+**To the Editor and Reviewers:**
+[...Drafted letter...]
+
+### **Summary of Changes Table**
+| Point | Action | Location |
+|-------|--------|----------|
+| R1.1 | [Action] | [Lines] |
+`;
+
+                const MODES = {
+                    polish: { prompt: POLISH_PROMPT },
+                    paraphrase: { prompt: PARAPHRASE_PROMPT },
+                    reviewer: { prompt: REVIEWER_PROMPT }
+                };
+
+                // Methods
+                const toggleTheme = () => {
+                    isDark.value = !isDark.value;
+                    document.documentElement.classList.toggle('dark', isDark.value);
+                };
+
+                const toggleSidebar = () => sidebarOpen.value = !sidebarOpen.value;
+                
+                const setMode = (mode) => {
+                    if (isLoading.value) return; 
+                    currentMode.value = mode;
+                    if(window.innerWidth < 768) sidebarOpen.value = false;
+                };
+
+                const updateProviderSettings = () => {
+                    const map = {
+                        'deepseek': { url: 'https://api.deepseek.com/chat/completions', model: 'deepseek-reasoner' },
+                        'moonshot': { url: 'https://api.moonshot.cn/v1/chat/completions', model: 'moonshot-v1-8k' },
+                        'zhipu': { url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', model: 'glm-4' },
+                        'qwen': { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' },
+                        'custom': { url: '', model: '' }
+                    };
+                    if (map[selectedProvider.value]) {
+                        apiEndpoint.value = map[selectedProvider.value].url;
+                        modelName.value = map[selectedProvider.value].model;
+                    }
+                };
+
+                const handleFileUpload = (e) => {
+                    if (isLoading.value) return;
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    if (file.name.endsWith('.docx')) {
+                        const reader = new FileReader();
+                        reader.onload = (evt) => {
+                            mammoth.extractRawText({arrayBuffer: evt.target.result})
+                                .then(result => inputText.value = result.value)
+                                .catch(err => alert("Error reading .docx: " + err.message));
+                        };
+                        reader.readAsArrayBuffer(file);
+                    } else {
+                        const reader = new FileReader();
+                        reader.onload = (evt) => inputText.value = evt.target.result;
+                        reader.readAsText(file);
+                    }
+                };
+
+                const cancelRequest = () => {
+                    if (abortController) {
+                        abortController.abort();
+                        abortController = null;
+                    }
+                    isLoading.value = false;
+                    statusText.value = "Generation Cancelled";
+                };
+
+                const processText = async () => {
+                    if (!apiKey.value) {
+                        alert("Please enter your API Key in the settings sidebar.");
+                        sidebarOpen.value = true;
+                        return;
+                    }
+                    isLoading.value = true;
+                    outputText.value = "";
+                    
+                    // Initialize AbortController
+                    abortController = new AbortController();
+                    
+                    let msgIndex = 0;
+                    const msgs = statusMessages[currentMode.value];
+                    statusText.value = msgs[0];
+                    const interval = setInterval(() => {
+                        msgIndex = (msgIndex + 1) % msgs.length;
+                        statusText.value = msgs[msgIndex];
+                    }, 2500);
+                    
+                    let systemContent = MODES[currentMode.value].prompt;
+                    let userContent = inputText.value;
+
+                    if (customInstruction.value.trim()) {
+                        userContent += `\n\n[USER EXTRA REQUIREMENT]: ${customInstruction.value}`;
+                    }
+
+                    try {
+                        const res = await fetch(apiEndpoint.value, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey.value}` },
+                            body: JSON.stringify({
+                                model: modelName.value,
+                                messages: [{ role: "system", content: systemContent }, { role: "user", content: userContent }],
+                                temperature: 0.7
+                            }),
+                            signal: abortController.signal // Pass the signal
+                        });
+                        
+                        const data = await res.json();
+                        if (data.error) throw new Error(data.error.message);
+                        outputText.value = data.choices[0].message.content;
+                    } catch (err) {
+                        if (err.name === 'AbortError') {
+                            console.log('Fetch aborted by user');
+                            // No alert needed for user cancellation
+                        } else {
+                            outputText.value = `**Error:** ${err.message}\n\n*Check Key/Network.*`;
+                        }
+                    } finally {
+                        clearInterval(interval);
+                        isLoading.value = false;
+                        abortController = null;
+                    }
+                };
+
+                const renderedOutput = computed(() => outputText.value ? marked.parse(outputText.value) : null);
+
+                const copyOutput = () => {
+                    if (!outputText.value) return;
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(outputText.value).then(() => alert("Result copied!"));
+                    } else {
+                        const textArea = document.createElement("textarea");
+                        textArea.value = outputText.value;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        try {
+                            document.execCommand('copy');
+                            alert("Result copied (Fallback)!");
+                        } catch (err) {
+                            alert("Copy failed.");
+                        }
+                        document.body.removeChild(textArea);
+                    }
+                };
+
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) toggleTheme();
+
+                return {
+                    isDark, toggleTheme, sidebarOpen, toggleSidebar, isLoading,
+                    currentMode, setMode, modeDisplayNames, modeColorClasses, statusText,
+                    selectedProvider, apiKey, modelName, apiEndpoint, updateProviderSettings,
+                    inputText, renderedOutput, handleFileUpload, processText, copyOutput, customInstruction,
+                    cancelRequest
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
